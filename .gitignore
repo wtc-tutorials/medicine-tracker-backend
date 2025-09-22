@@ -490,5 +490,8 @@ pyrightconfig.json
 # autorun
 .autorun
 
+# error
+error.txt
+
 # End of https://www.toptal.com/developers/gitignore/api/macos,python,node,VisualStudioCode,dotenv,pycharm
 n
