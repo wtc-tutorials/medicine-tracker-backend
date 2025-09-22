@@ -1,7 +1,6 @@
 # crud.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import timedelta
 from . import models, schemas
 
 
