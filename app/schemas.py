@@ -1,48 +1,18 @@
-# backend/app/schemas.py
-import uuid
-from datetime import date, time, datetime
-from pydantic import BaseModel, EmailStr, ConfigDict
+# app/schemas.py
+from datetime import datetime, date, time
+from uuid import UUID
+from pydantic import BaseModel, ConfigDict
+from typing import List, Optional
+from enum import Enum
 
 
-# Base that enables "from_attributes" (== old orm_mode)
-class BaseSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class GenderEnum(str, Enum):
+    MALE = "male"
+    FEMALE = "female"
 
 
-# --- Users ---
-class UserBase(BaseSchema):
-    username: str
-    email: EmailStr
-
-
-class UserCreate(UserBase):
-    password: str
-
-
-class UserResponse(UserBase):
-    id: uuid.UUID
-    created_at: datetime
-
-
-# --- Medicines ---
-class MedicineBase(BaseSchema):
-    name: str
-    start_date: date
-    total_quantity: int
-    daily_dosage: int
-
-
-class MedicineCreate(MedicineBase):
-    pass
-
-
-class MedicineResponse(MedicineBase):
-    id: uuid.UUID
-    owner_id: uuid.UUID
-
-
-# --- Dosages ---
-class DosageBase(BaseSchema):
+# --- Dosage ---
+class DosageBase(BaseModel):
     time_of_day: time
     quantity: int
 
@@ -51,6 +21,51 @@ class DosageCreate(DosageBase):
     pass
 
 
-class DosageResponse(DosageBase):
-    id: uuid.UUID
-    medicine_id: uuid.UUID
+class Dosage(DosageBase):
+    id: UUID
+    medicine_id: UUID
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Medicine ---
+class MedicineBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    start_date: date
+    total_quantity: int
+
+
+class MedicineCreate(MedicineBase):
+    dosages: List[DosageCreate]
+
+
+class Medicine(MedicineBase):
+    id: UUID
+    user_id: UUID
+    created_at: datetime
+    dosages: List[Dosage]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- User ---
+class UserBase(BaseModel):
+    username: str
+    email: str
+
+
+class UserCreate(UserBase):
+    password: str
+    date_of_birth: Optional[date] = None
+    gender: Optional[GenderEnum] = None
+
+
+class User(UserBase):
+    id: UUID
+    created_at: datetime
+    date_of_birth: Optional[date] = None
+    gender: Optional[GenderEnum] = None
+    medicines: List[Medicine] = []
+
+    model_config = ConfigDict(from_attributes=True)
