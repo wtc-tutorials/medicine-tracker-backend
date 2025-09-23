@@ -1,58 +1,54 @@
-import uuid
+# app/crud.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 from . import models, schemas
 
 
-# --- User CRUD ---
 async def create_user(db: AsyncSession, user: schemas.UserCreate):
-    db_user = models.User(
-        username=user.username,
-        email=user.email,
-        password=user.password,  # 🚨 TODO: hash before storing!
-    )
+    db_user = models.User(**user.model_dump())
     db.add(db_user)
     await db.commit()
     await db.refresh(db_user)
     return db_user
 
 
-async def get_user(db: AsyncSession, user_id: uuid.UUID):
-    result = await db.execute(select(models.User).filter(models.User.id == user_id))
-    return result.scalar_one_or_none()
+async def get_user_by_email(db: AsyncSession, email: str):
+    result = await db.execute(select(models.User).where(models.User.email == email))
+    return result.scalars().first()
 
 
-# --- Medicine CRUD ---
+async def get_user(db: AsyncSession, user_id: str):
+    result = await db.execute(
+        select(models.User)
+        .options(selectinload(models.User.medicines))
+        .where(models.User.id == user_id)
+    )
+    return result.scalars().first()
+
+
 async def create_medicine(
-    db: AsyncSession, medicine: schemas.MedicineCreate, owner_id: uuid.UUID
+    db: AsyncSession, medicine: schemas.MedicineCreate, user_id: str
 ):
-    db_medicine = models.Medicine(**medicine.dict(), owner_id=owner_id)
+    db_medicine = models.Medicine(
+        **medicine.model_dump(exclude={"dosages"}), user_id=user_id
+    )
     db.add(db_medicine)
+    await db.flush()
+
+    for dosage in medicine.dosages:
+        db_dosage = models.Dosage(**dosage.model_dump(), medicine_id=db_medicine.id)
+        db.add(db_dosage)
+
     await db.commit()
     await db.refresh(db_medicine)
     return db_medicine
 
 
-async def get_medicines(db: AsyncSession, owner_id: uuid.UUID):
+async def get_medicines(db: AsyncSession, user_id: str):
     result = await db.execute(
-        select(models.Medicine).filter(models.Medicine.owner_id == owner_id)
-    )
-    return result.scalars().all()
-
-
-# --- Dosage CRUD ---
-async def create_dosage(
-    db: AsyncSession, dosage: schemas.DosageCreate, medicine_id: uuid.UUID
-):
-    db_dosage = models.Dosage(**dosage.dict(), medicine_id=medicine_id)
-    db.add(db_dosage)
-    await db.commit()
-    await db.refresh(db_dosage)
-    return db_dosage
-
-
-async def get_dosages(db: AsyncSession, medicine_id: uuid.UUID):
-    result = await db.execute(
-        select(models.Dosage).filter(models.Dosage.medicine_id == medicine_id)
+        select(models.Medicine)
+        .options(selectinload(models.Medicine.dosages))
+        .where(models.Medicine.user_id == user_id)
     )
     return result.scalars().all()
