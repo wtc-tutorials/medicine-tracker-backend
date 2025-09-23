@@ -1,0 +1,37 @@
+@startuml Medicines
+
+!theme plain
+
+entity "USERS" as users {
+    *id : uuid <<PK>>
+    --
+    username : string <<UNIQUE>>
+    email : string <<UNIQUE>>
+    password_hash : string
+    created_at : datetime
+    updated_at : datetime
+}
+
+entity "MEDICINES" as medicines {
+    *id : uuid <<PK>>
+    --
+    owner_id : uuid <<FK>>
+    name : string
+    start_date : date
+    total_quantity : int
+    daily_dosage : int
+}
+
+entity "DOSAGES" as dosages {
+    *id : uuid <<PK>>
+    --
+    medicine_id : uuid <<FK>>
+    time_of_day : time
+    quantity : int
+}
+
+' Relationships
+users ||--o{ medicines : "has"
+medicines ||--o{ dosages : "scheduled at"
+
+@enduml
