@@ -1,55 +1,84 @@
-# medicines.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import timedelta
-from .. import schemas, crud, database
+from typing import List
+from .. import models, schemas, auth
+from ..database import get_db
 
-router = APIRouter()
-
-
-async def get_db():
-    async with database.SessionLocal() as session:
-        yield session
+router = APIRouter(prefix="/medicines", tags=["medicines"])
 
 
-@router.post("/", response_model=schemas.Medicine)
+
+@router.post("/", response_model=schemas.MedicineResponse)
 async def create_medicine(
-    medicine: schemas.MedicineCreate, db: AsyncSession = Depends(get_db)
+    medicine: schemas.MedicineCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
 ):
-    user_id = 1  # TODO: replace with auth
-    med = await crud.create_medicine(db, medicine, user_id)
-    end_date = medicine.start_date + timedelta(
-        days=medicine.total_quantity // medicine.daily_dosage
+    """Create a new medicine for the authenticated user."""
+    db_medicine = models.Medicine(
+        **medicine.model_dump(),  # use model_dump() instead of dict()
+        owner_id=current_user.id,
     )
-    remaining = medicine.total_quantity
-    return schemas.Medicine(
-        id=med.id,
-        name=med.name,
-        start_date=med.start_date,
-        total_quantity=med.total_quantity,
-        daily_dosage=med.daily_dosage,
-        end_date=end_date,
-        remaining=remaining,
-    )
+    db.add(db_medicine)
+    await db.commit()
+    await db.refresh(db_medicine)
+    return db_medicine
 
 
-@router.get("/", response_model=list[schemas.Medicine])
-async def list_medicines(db: AsyncSession = Depends(get_db)):
-    user_id = 1  # TODO: replace with auth
-    meds = await crud.get_medicines(db, user_id)
-    output = []
-    for m in meds:
-        end_date = m.start_date + timedelta(days=m.total_quantity // m.daily_dosage)
-        remaining = m.total_quantity  # TODO: update as usage tracked
-        output.append(
-            schemas.Medicine(
-                id=m.id,
-                name=m.name,
-                start_date=m.start_date,
-                total_quantity=m.total_quantity,
-                daily_dosage=m.daily_dosage,
-                end_date=end_date,
-                remaining=remaining,
-            )
+@router.get("/", response_model=List[schemas.MedicineResponse])
+async def list_medicines(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """List all medicines for the authenticated user."""
+    result = await db.execute(
+        models.Medicine.__table__.select().where(
+            models.Medicine.owner_id == current_user.id
         )
-    return output
+    )
+    medicines = result.scalars().all()
+    return medicines
+
+
+@router.get("/{medicine_id}", response_model=schemas.MedicineResponse)
+async def get_medicine(
+    medicine_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Get a specific medicine by ID for the authenticated user."""
+    result = await db.execute(
+        models.Medicine.__table__.select().where(
+            (models.Medicine.id == medicine_id)
+            & (models.Medicine.owner_id == current_user.id)
+        )
+    )
+    medicine = result.scalar_one_or_none()
+    if not medicine:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Medicine not found"
+        )
+    return medicine
+
+
+@router.delete("/{medicine_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_medicine(
+    medicine_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Delete a specific medicine by ID for the authenticated user."""
+    result = await db.execute(
+        models.Medicine.__table__.select().where(
+            (models.Medicine.id == medicine_id)
+            & (models.Medicine.owner_id == current_user.id)
+        )
+    )
+    medicine = result.scalar_one_or_none()
+    if not medicine:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Medicine not found"
+        )
+
+    await db.delete(medicine)
+    await db.commit()
